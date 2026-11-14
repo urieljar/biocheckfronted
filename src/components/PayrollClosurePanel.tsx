@@ -1,0 +1,16 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { api } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
+import { can } from '../lib/permissions'
+
+interface Closure { id: string; fromDate: string; toDate: string; status: string; notes?: string | null }
+const input = 'rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200'
+
+export default function PayrollClosurePanel() {
+  const { user } = useAuth(); const [items, setItems] = useState<Closure[]>([]); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [notes, setNotes] = useState(''); const [message, setMessage] = useState(''); const [error, setError] = useState('')
+  const refresh = () => api.get<{ data: Closure[] }>('/payroll-closures').then((result) => setItems(result.data)).catch(() => setError('No se pudieron cargar los cierres'))
+  useEffect(() => { void refresh() }, [])
+  const close = async (event: FormEvent) => { event.preventDefault(); setMessage(''); setError(''); try { await api.post('/payroll-closures', { fromDate: from, toDate: to, notes }); setMessage('Periodo cerrado correctamente.'); setNotes(''); void refresh() } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo cerrar el periodo') } }
+  const reopen = async (item: Closure) => { const reason = window.prompt('Motivo de reapertura:', 'Corrección autorizada de pre-nómina'); if (!reason) return; try { await api.post(`/payroll-closures/${item.id}/reopen`, { reason }); setMessage('Periodo reabierto.'); void refresh() } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo reabrir el periodo') } }
+  return <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5"><h2 className="text-lg font-semibold text-white">Cierre de pre-nómina</h2><p className="mt-1 text-sm text-slate-400">Un cierre bloquea altas y eliminaciones de checadas manuales dentro del periodo.</p>{can(user?.role, 'payroll.close') && <form onSubmit={close} className="mt-4 flex flex-wrap gap-2"><input required type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={input} /><input required type="date" value={to} onChange={(e) => setTo(e.target.value)} className={input} /><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Nota opcional" className={`${input} w-48`} /><button className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white">Cerrar periodo</button></form>}{message && <p className="mt-3 text-sm text-emerald-300">{message}</p>}{error && <p className="mt-3 text-sm text-red-300">{error}</p>}<div className="mt-4 space-y-2">{items.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-800 px-3 py-2 text-sm"><span className="text-slate-200">{item.fromDate} → {item.toDate}</span><span className={item.status === 'CLOSED' ? 'text-amber-300' : 'text-slate-500'}>{item.status === 'CLOSED' ? 'CERRADO' : 'REABIERTO'}</span>{item.status === 'CLOSED' && can(user?.role, 'payroll.reopen') && <button onClick={() => void reopen(item)} className="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300">Reabrir</button>}</div>)}{items.length === 0 && <p className="text-sm text-slate-500">No hay periodos cerrados.</p>}</div></section>
+}

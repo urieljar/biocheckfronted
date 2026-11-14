@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* Estilos de barra de desplazamiento moderna y oscura */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+/* Soporte de tema oscuro y acento refinado para selectores nativos */
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
+  accent-color: #f59e0b;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.85);
+  opacity: 0.7;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(1);
+  opacity: 1;
+  background-color: rgba(245, 158, 11, 0.15);
+}
