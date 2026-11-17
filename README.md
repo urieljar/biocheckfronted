@@ -30,3 +30,27 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+# BioCheck Frontend
+
+## Ejecutar con Docker
+
+El contenedor compila React/Vite y sirve la aplicación con Nginx. Las rutas
+`/api` y `/iclock` se reenvían al backend publicado en `host.docker.internal:3000`.
+
+```powershell
+docker compose up -d --build
+docker compose ps
+```
+
+La aplicación queda disponible en:
+
+```text
+http://localhost:5173
+http://IP_DEL_SERVIDOR:5173
+```
+
+Para detenerla:
+
+```powershell
+docker compose down
+```

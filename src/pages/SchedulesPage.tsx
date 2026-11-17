@@ -18,6 +18,7 @@ import {
   Users,
   Search,
   Check,
+  Layers,
 } from 'lucide-react'
 
 interface ScheduleDay {
@@ -25,6 +26,8 @@ interface ScheduleDay {
   scheduleId?: string
   dayOfWeek: number
   isWorkDay: boolean
+  dayType?: 'NORMAL' | 'FLEXIBLE' | 'REST'
+  workMinutes?: number | null
   entryTime: string | null
   exitTime: string | null
   crossesMidnight: boolean
@@ -34,6 +37,8 @@ interface WorkSchedule {
   id: string
   name: string
   description: string | null
+  type?: 'NORMAL' | 'FLEXIBLE' | 'MIXED'
+  workMinutes?: number | null
   timeZone: string
   toleranceMinutes: number
   active: boolean
@@ -103,12 +108,16 @@ export default function SchedulesPage() {
   // Create form state
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [scheduleType, setScheduleType] = useState<'NORMAL' | 'FLEXIBLE' | 'MIXED'>('NORMAL')
+  const [workHours, setWorkHours] = useState(8)
   const [toleranceMinutes, setToleranceMinutes] = useState(10)
   const [days, setDays] = useState<ScheduleDay[]>(DEFAULT_DAYS)
 
   // Edit form state
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editScheduleType, setEditScheduleType] = useState<'NORMAL' | 'FLEXIBLE' | 'MIXED'>('NORMAL')
+  const [editWorkHours, setEditWorkHours] = useState(8)
   const [editToleranceMinutes, setEditToleranceMinutes] = useState(10)
   const [editDays, setEditDays] = useState<ScheduleDay[]>(DEFAULT_DAYS)
 
@@ -227,6 +236,8 @@ export default function SchedulesPage() {
   const handleOpenCreate = () => {
     setName('')
     setDescription('')
+    setScheduleType('NORMAL')
+    setWorkHours(8)
     setToleranceMinutes(10)
     setDays(JSON.parse(JSON.stringify(DEFAULT_DAYS)))
     setIsCreateOpen(true)
@@ -236,23 +247,32 @@ export default function SchedulesPage() {
     setSelectedSchedule(sch)
     setEditName(sch.name)
     setEditDescription(sch.description || '')
+    const schType = (sch.type === 'FLEXIBLE' ? 'FLEXIBLE' : sch.type === 'MIXED' ? 'MIXED' : 'NORMAL') as 'NORMAL' | 'FLEXIBLE' | 'MIXED'
+    setEditScheduleType(schType)
+    setEditWorkHours(sch.workMinutes ? Math.round(sch.workMinutes / 60) : 8)
     setEditToleranceMinutes(sch.toleranceMinutes)
 
     const currentDaysMap = new Map(sch.days?.map((d) => [d.dayOfWeek, d]))
     const filledDays: ScheduleDay[] = Array.from({ length: 7 }, (_, i) => {
       const existing = currentDaysMap.get(i)
       if (existing) {
+        const dayType = existing.dayType || (existing.isWorkDay ? (schType === 'MIXED' ? 'NORMAL' : schType) : 'REST')
+        const isFlex = dayType === 'FLEXIBLE'
         return {
           dayOfWeek: i,
           isWorkDay: existing.isWorkDay,
-          entryTime: existing.entryTime ? existing.entryTime.slice(0, 5) : '08:00',
-          exitTime: existing.exitTime ? existing.exitTime.slice(0, 5) : '17:00',
+          dayType,
+          workMinutes: existing.workMinutes ?? (sch.workMinutes || 480),
+          entryTime: existing.entryTime ? existing.entryTime.slice(0, 5) : (isFlex ? null : '08:00'),
+          exitTime: existing.exitTime ? existing.exitTime.slice(0, 5) : (isFlex ? null : '17:00'),
           crossesMidnight: existing.crossesMidnight || false,
         }
       }
       return {
         dayOfWeek: i,
         isWorkDay: false,
+        dayType: 'REST',
+        workMinutes: null,
         entryTime: null,
         exitTime: null,
         crossesMidnight: false,
@@ -261,6 +281,66 @@ export default function SchedulesPage() {
 
     setEditDays(filledDays)
     setIsEditOpen(true)
+  }
+
+  const handleChangeScheduleType = (newType: 'NORMAL' | 'FLEXIBLE' | 'MIXED') => {
+    setScheduleType(newType)
+    if (newType === 'NORMAL') {
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? 'NORMAL' : 'REST',
+          entryTime: d.isWorkDay ? (d.entryTime || '08:00') : null,
+          exitTime: d.isWorkDay ? (d.exitTime || '17:00') : null,
+        }))
+      )
+    } else if (newType === 'FLEXIBLE') {
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? 'FLEXIBLE' : 'REST',
+        }))
+      )
+    } else if (newType === 'MIXED') {
+      setDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? (d.dayType === 'FLEXIBLE' ? 'FLEXIBLE' : 'NORMAL') : 'REST',
+          entryTime: d.isWorkDay && d.dayType !== 'FLEXIBLE' ? (d.entryTime || '08:00') : d.entryTime,
+          exitTime: d.isWorkDay && d.dayType !== 'FLEXIBLE' ? (d.exitTime || '17:00') : d.exitTime,
+        }))
+      )
+    }
+  }
+
+  const handleChangeEditScheduleType = (newType: 'NORMAL' | 'FLEXIBLE' | 'MIXED') => {
+    setEditScheduleType(newType)
+    if (newType === 'NORMAL') {
+      setEditDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? 'NORMAL' : 'REST',
+          entryTime: d.isWorkDay ? (d.entryTime || '08:00') : null,
+          exitTime: d.isWorkDay ? (d.exitTime || '17:00') : null,
+        }))
+      )
+    } else if (newType === 'FLEXIBLE') {
+      setEditDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? 'FLEXIBLE' : 'REST',
+        }))
+      )
+    } else if (newType === 'MIXED') {
+      setEditDays((prev) =>
+        prev.map((d) => ({
+          ...d,
+          dayType: d.isWorkDay ? (d.dayType === 'FLEXIBLE' ? 'FLEXIBLE' : 'NORMAL') : 'REST',
+          entryTime: d.isWorkDay && d.dayType !== 'FLEXIBLE' ? (d.entryTime || '08:00') : d.entryTime,
+          exitTime: d.isWorkDay && d.dayType !== 'FLEXIBLE' ? (d.exitTime || '17:00') : d.exitTime,
+        }))
+      )
+    }
   }
 
   const handleOpenAssign = (sch: WorkSchedule) => {
@@ -297,14 +377,35 @@ export default function SchedulesPage() {
 
       if (field === 'isWorkDay') {
         current.isWorkDay = Boolean(value)
-        if (current.isWorkDay && !current.entryTime) {
+        if (current.isWorkDay) {
+          if (scheduleType === 'NORMAL') {
+            current.dayType = 'NORMAL'
+            if (!current.entryTime) {
+              current.entryTime = '08:00'
+              current.exitTime = '17:00'
+            }
+          } else if (scheduleType === 'FLEXIBLE') {
+            current.dayType = 'FLEXIBLE'
+          } else if (scheduleType === 'MIXED') {
+            current.dayType = current.dayType || 'NORMAL'
+            if (current.dayType === 'NORMAL' && !current.entryTime) {
+              current.entryTime = '08:00'
+              current.exitTime = '17:00'
+            }
+          }
+        } else {
+          current.dayType = 'REST'
+        }
+      } else if (field === 'dayType') {
+        current.dayType = value as 'NORMAL' | 'FLEXIBLE' | 'REST'
+        if (current.dayType === 'NORMAL' && !current.entryTime) {
           current.entryTime = '08:00'
           current.exitTime = '17:00'
         }
       } else if (field === 'entryTime') {
-        current.entryTime = value as string
+        current.entryTime = value as string | null
       } else if (field === 'exitTime') {
-        current.exitTime = value as string
+        current.exitTime = value as string | null
       } else if (field === 'crossesMidnight') {
         current.crossesMidnight = Boolean(value)
       }
@@ -325,14 +426,35 @@ export default function SchedulesPage() {
 
       if (field === 'isWorkDay') {
         current.isWorkDay = Boolean(value)
-        if (current.isWorkDay && !current.entryTime) {
+        if (current.isWorkDay) {
+          if (editScheduleType === 'NORMAL') {
+            current.dayType = 'NORMAL'
+            if (!current.entryTime) {
+              current.entryTime = '08:00'
+              current.exitTime = '17:00'
+            }
+          } else if (editScheduleType === 'FLEXIBLE') {
+            current.dayType = 'FLEXIBLE'
+          } else if (editScheduleType === 'MIXED') {
+            current.dayType = current.dayType || 'NORMAL'
+            if (current.dayType === 'NORMAL' && !current.entryTime) {
+              current.entryTime = '08:00'
+              current.exitTime = '17:00'
+            }
+          }
+        } else {
+          current.dayType = 'REST'
+        }
+      } else if (field === 'dayType') {
+        current.dayType = value as 'NORMAL' | 'FLEXIBLE' | 'REST'
+        if (current.dayType === 'NORMAL' && !current.entryTime) {
           current.entryTime = '08:00'
           current.exitTime = '17:00'
         }
       } else if (field === 'entryTime') {
-        current.entryTime = value as string
+        current.entryTime = value as string | null
       } else if (field === 'exitTime') {
-        current.exitTime = value as string
+        current.exitTime = value as string | null
       } else if (field === 'crossesMidnight') {
         current.crossesMidnight = Boolean(value)
       }
@@ -352,11 +474,17 @@ export default function SchedulesPage() {
             : type === 'mon-sat'
             ? d.dayOfWeek >= 1 && d.dayOfWeek <= 6
             : true
+        const dType = isWork
+          ? scheduleType === 'MIXED'
+            ? (d.dayType || 'NORMAL')
+            : scheduleType
+          : 'REST'
         return {
           ...d,
           isWorkDay: isWork,
-          entryTime: isWork ? (d.entryTime || '08:00') : null,
-          exitTime: isWork ? (d.exitTime || '17:00') : null,
+          dayType: dType,
+          entryTime: isWork ? (dType === 'FLEXIBLE' ? d.entryTime : (d.entryTime || '08:00')) : null,
+          exitTime: isWork ? (dType === 'FLEXIBLE' ? d.exitTime : (d.exitTime || '17:00')) : null,
         }
       })
     )
@@ -371,11 +499,17 @@ export default function SchedulesPage() {
             : type === 'mon-sat'
             ? d.dayOfWeek >= 1 && d.dayOfWeek <= 6
             : true
+        const dType = isWork
+          ? editScheduleType === 'MIXED'
+            ? (d.dayType || 'NORMAL')
+            : editScheduleType
+          : 'REST'
         return {
           ...d,
           isWorkDay: isWork,
-          entryTime: isWork ? (d.entryTime || '08:00') : null,
-          exitTime: isWork ? (d.exitTime || '17:00') : null,
+          dayType: dType,
+          entryTime: isWork ? (dType === 'FLEXIBLE' ? d.entryTime : (d.entryTime || '08:00')) : null,
+          exitTime: isWork ? (dType === 'FLEXIBLE' ? d.exitTime : (d.exitTime || '17:00')) : null,
         }
       })
     )
@@ -386,17 +520,31 @@ export default function SchedulesPage() {
     setActionLoading('create')
     setFeedback(null)
     try {
+      const isAnyFlex = scheduleType === 'FLEXIBLE' || scheduleType === 'MIXED'
       const payload = {
         name: name.trim(),
         description: description.trim() || null,
+        type: scheduleType,
+        workMinutes: isAnyFlex ? Math.round(workHours * 60) : null,
         toleranceMinutes: Number(toleranceMinutes),
-        days: days.map((d) => ({
-          dayOfWeek: d.dayOfWeek,
-          isWorkDay: d.isWorkDay,
-          entryTime: d.isWorkDay ? (d.entryTime || '08:00') : null,
-          exitTime: d.isWorkDay ? (d.exitTime || '17:00') : null,
-          crossesMidnight: d.isWorkDay && d.crossesMidnight,
-        })),
+        days: days.map((d) => {
+          const isWork = d.isWorkDay
+          const dType = isWork
+            ? scheduleType === 'MIXED'
+              ? (d.dayType === 'FLEXIBLE' ? 'FLEXIBLE' : 'NORMAL')
+              : scheduleType
+            : 'REST'
+          const isDayFlex = dType === 'FLEXIBLE'
+          return {
+            dayOfWeek: d.dayOfWeek,
+            isWorkDay: isWork,
+            dayType: dType,
+            workMinutes: isWork && isDayFlex ? Math.round((d.workMinutes ? d.workMinutes / 60 : workHours) * 60) : null,
+            entryTime: isWork ? (isDayFlex ? (d.entryTime || null) : (d.entryTime || '08:00')) : null,
+            exitTime: isWork ? (isDayFlex ? (d.exitTime || null) : (d.exitTime || '17:00')) : null,
+            crossesMidnight: isWork && !isDayFlex && d.crossesMidnight,
+          }
+        }),
       }
 
       await api.post('/schedules', payload)
@@ -422,17 +570,31 @@ export default function SchedulesPage() {
     setActionLoading('edit')
     setFeedback(null)
     try {
+      const isAnyFlex = editScheduleType === 'FLEXIBLE' || editScheduleType === 'MIXED'
       const payload = {
         name: editName.trim(),
         description: editDescription.trim() || null,
+        type: editScheduleType,
+        workMinutes: isAnyFlex ? Math.round(editWorkHours * 60) : null,
         toleranceMinutes: Number(editToleranceMinutes),
-        days: editDays.map((d) => ({
-          dayOfWeek: d.dayOfWeek,
-          isWorkDay: d.isWorkDay,
-          entryTime: d.isWorkDay ? (d.entryTime || '08:00') : null,
-          exitTime: d.isWorkDay ? (d.exitTime || '17:00') : null,
-          crossesMidnight: d.isWorkDay && d.crossesMidnight,
-        })),
+        days: editDays.map((d) => {
+          const isWork = d.isWorkDay
+          const dType = isWork
+            ? editScheduleType === 'MIXED'
+              ? (d.dayType === 'FLEXIBLE' ? 'FLEXIBLE' : 'NORMAL')
+              : editScheduleType
+            : 'REST'
+          const isDayFlex = dType === 'FLEXIBLE'
+          return {
+            dayOfWeek: d.dayOfWeek,
+            isWorkDay: isWork,
+            dayType: dType,
+            workMinutes: isWork && isDayFlex ? Math.round((d.workMinutes ? d.workMinutes / 60 : editWorkHours) * 60) : null,
+            entryTime: isWork ? (isDayFlex ? (d.entryTime || null) : (d.entryTime || '08:00')) : null,
+            exitTime: isWork ? (isDayFlex ? (d.exitTime || null) : (d.exitTime || '17:00')) : null,
+            crossesMidnight: isWork && !isDayFlex && d.crossesMidnight,
+          }
+        }),
       }
 
       await api.patch(`/schedules/${selectedSchedule.id}`, payload)
@@ -792,13 +954,28 @@ export default function SchedulesPage() {
               <div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
                       <h3
                         className="text-base sm:text-lg font-bold text-white tracking-tight truncate"
                         title={sch.name}
                       >
                         {sch.name}
                       </h3>
+                      {sch.type === 'FLEXIBLE' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap flex-shrink-0 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          <span>Flexible ({sch.workMinutes ? Math.round(sch.workMinutes / 60) : 8}h/día)</span>
+                        </span>
+                      ) : sch.type === 'MIXED' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap flex-shrink-0 flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-indigo-400" />
+                          <span>Mixto</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap flex-shrink-0">
+                          Fijo
+                        </span>
+                      )}
                       <button
                         onClick={() => handleOpenViewAssignments(sch)}
                         className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0"
@@ -854,30 +1031,44 @@ export default function SchedulesPage() {
                     Días y Turnos
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {sch.days?.map((d) => (
-                      <div
-                        key={d.dayOfWeek}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                          d.isWorkDay
-                            ? 'bg-slate-950 border-slate-800 text-slate-200'
-                            : 'bg-slate-900/40 border-slate-800/40 text-slate-500'
-                        }`}
-                      >
-                        <span className="font-medium">{DAY_NAMES[d.dayOfWeek]}</span>
-                        {d.isWorkDay ? (
-                          <span className="font-mono text-amber-300 flex items-center gap-1">
-                            <span>{d.entryTime?.slice(0, 5)}</span>
-                            <span className="text-slate-500">→</span>
-                            <span>{d.exitTime?.slice(0, 5)}</span>
-                            {d.crossesMidnight ? (
-                              <span className="text-[10px] text-indigo-400 font-sans ml-1">(+1d)</span>
-                            ) : null}
-                          </span>
-                        ) : (
-                          <span className="italic">Descanso</span>
-                        )}
-                      </div>
-                    ))}
+                    {sch.days?.map((d) => {
+                      const isFlex = sch.type === 'FLEXIBLE' || d.dayType === 'FLEXIBLE'
+                      return (
+                        <div
+                          key={d.dayOfWeek}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                            d.isWorkDay
+                              ? isFlex
+                                ? 'bg-slate-950 border-emerald-950/60 text-slate-200'
+                                : 'bg-slate-950 border-slate-800 text-slate-200'
+                              : 'bg-slate-900/40 border-slate-800/40 text-slate-500'
+                          }`}
+                        >
+                          <span className="font-medium">{DAY_NAMES[d.dayOfWeek]}</span>
+                          {d.isWorkDay ? (
+                            isFlex ? (
+                              <span className="font-mono text-emerald-400 flex items-center gap-1 text-[11px]">
+                                <span>Flexible ({d.workMinutes ? Math.round(d.workMinutes / 60) : (sch.workMinutes ? Math.round(sch.workMinutes / 60) : 8)}h)</span>
+                                {d.entryTime && d.exitTime ? (
+                                  <span className="text-slate-400 font-sans text-[10px]">({d.entryTime.slice(0, 5)} - {d.exitTime.slice(0, 5)})</span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-amber-300 flex items-center gap-1">
+                                <span>{d.entryTime?.slice(0, 5)}</span>
+                                <span className="text-slate-500">→</span>
+                                <span>{d.exitTime?.slice(0, 5)}</span>
+                                {d.crossesMidnight ? (
+                                  <span className="text-[10px] text-indigo-400 font-sans ml-1">(+1d)</span>
+                                ) : null}
+                              </span>
+                            )
+                          ) : (
+                            <span className="italic">Descanso</span>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -980,13 +1171,203 @@ export default function SchedulesPage() {
                 />
               </div>
 
+              {/* Selector de Tipo de Horario: Fijo vs Flexible vs Mixto */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Modalidad del Horario *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Horario Fijo */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeScheduleType('NORMAL')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      scheduleType === 'NORMAL'
+                        ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10 ring-1 ring-amber-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${scheduleType === 'NORMAL' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${scheduleType === 'NORMAL' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Fijo
+                        </span>
+                        {scheduleType === 'NORMAL' && <Check className="w-4 h-4 text-amber-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Entrada y salida con hora estricta. Evalúa retardos y salidas tempranas.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Horario Flexible */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeScheduleType('FLEXIBLE')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      scheduleType === 'FLEXIBLE'
+                        ? 'bg-emerald-500/10 border-emerald-500/50 shadow-sm shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${scheduleType === 'FLEXIBLE' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${scheduleType === 'FLEXIBLE' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Flexible
+                        </span>
+                        {scheduleType === 'FLEXIBLE' && <Check className="w-4 h-4 text-emerald-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Jornada por meta de horas diarias trabajadas. Sin penalización por retardo.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Horario Mixto */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeScheduleType('MIXED')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      scheduleType === 'MIXED'
+                        ? 'bg-indigo-500/10 border-indigo-500/50 shadow-sm shadow-indigo-500/10 ring-1 ring-indigo-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${scheduleType === 'MIXED' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${scheduleType === 'MIXED' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Mixto
+                        </span>
+                        {scheduleType === 'MIXED' && <Check className="w-4 h-4 text-indigo-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Combina días fijos y días flexibles en la semana (ej. Lun-Jue fijo, Vie flexible).
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Configuración de Horas Requeridas para Horario Flexible */}
+              {scheduleType === 'FLEXIBLE' && (
+                <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-emerald-300 mb-1">
+                        Horas Diarias Requeridas *
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        Cantidad mínima de horas que el empleado debe cumplir en cada día laborable
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        step={0.5}
+                        required
+                        value={workHours}
+                        onChange={(e) => setWorkHours(Number(e.target.value))}
+                        className="w-24 px-3 py-2 bg-slate-950 border border-emerald-500/40 rounded-xl text-emerald-200 font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      />
+                      <span className="text-xs font-semibold text-emerald-300">horas/día</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400">Atajos rápidos:</span>
+                    {[6, 7, 8, 9, 10].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setWorkHours(h)}
+                        className={`px-2 py-0.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                          workHours === h
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {h} hrs ({h * 60} min)
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-emerald-400/90 leading-relaxed">
+                    ✨ <strong>Cálculo inteligente:</strong> El empleado registrará sus checadas (entrada y salida) a cualquier hora. El sistema validará que haya acumulado al menos {workHours} hrs ({Math.round(workHours * 60)} min) trabajadas para marcar la asistencia completa.
+                  </p>
+                </div>
+              )}
+
+              {/* Configuración para Horario Mixto */}
+              {scheduleType === 'MIXED' && (
+                <div className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/30 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-indigo-300 mb-1">
+                        Meta para Días Flexibles *
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        Horas a cumplir en los días de la semana que configures como flexibles
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        step={0.5}
+                        required
+                        value={workHours}
+                        onChange={(e) => setWorkHours(Number(e.target.value))}
+                        className="w-24 px-3 py-2 bg-slate-950 border border-indigo-500/40 rounded-xl text-indigo-200 font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                      <span className="text-xs font-semibold text-indigo-300">horas/día</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400">Atajos rápidos:</span>
+                    {[6, 7, 8, 9, 10].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setWorkHours(h)}
+                        className={`px-2 py-0.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                          workHours === h
+                            ? 'bg-indigo-500 text-white border-indigo-400 font-bold'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {h} hrs ({h * 60} min)
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-indigo-400/90 leading-relaxed">
+                    🔀 <strong>Modalidad Combinada:</strong> En la lista de días abajo puedes elegir para cada día si es <strong>Fijo</strong> (con entrada y salida específica) o <strong>Flexible</strong> (meta de {workHours} hrs).
+                  </p>
+                </div>
+              )}
+
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Configuración de los 7 Días de la Semana
                     </label>
-                    <span className="text-[11px] text-slate-500">Define qué días se trabaja y el horario de entrada/salida</span>
+                    <span className="text-[11px] text-slate-500">
+                      {scheduleType === 'FLEXIBLE'
+                        ? 'Define qué días aplica la jornada flexible y si deseas acotar una ventana opcional'
+                        : scheduleType === 'MIXED'
+                        ? 'Configura para cada día si labora en turno Fijo o Flexible'
+                        : 'Define qué días se trabaja y el horario de entrada/salida'}
+                    </span>
                   </div>
 
                   {/* Preajustes rápidos */}
@@ -1020,99 +1401,209 @@ export default function SchedulesPage() {
                 </div>
 
                 <div className="space-y-2 border border-slate-800 rounded-2xl p-3 bg-slate-950">
-                  {days.map((d, idx) => (
-                    <div
-                      key={d.dayOfWeek}
-                      className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                        d.isWorkDay
-                          ? 'bg-slate-900 border-slate-750 shadow-sm'
-                          : 'bg-slate-900/40 border-slate-800/60 opacity-60'
-                      }`}
-                    >
-                      {/* Nombre y Checkbox del día */}
-                      <div className="flex items-center gap-2.5 min-w-[110px]">
-                        <input
-                          type="checkbox"
-                          id={`create-day-${d.dayOfWeek}`}
-                          checked={d.isWorkDay}
-                          onChange={(e) => handleDayChange(idx, 'isWorkDay', e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
-                        />
-                        <label
-                          htmlFor={`create-day-${d.dayOfWeek}`}
-                          className={`text-sm font-semibold cursor-pointer ${
-                            d.isWorkDay ? 'text-white' : 'text-slate-400'
-                          }`}
-                        >
-                          {DAY_NAMES[d.dayOfWeek]}
-                        </label>
+                  {days.map((d, idx) => {
+                    const isFlexDay = scheduleType === 'FLEXIBLE' || (scheduleType === 'MIXED' && d.dayType === 'FLEXIBLE')
+                    return (
+                      <div
+                        key={d.dayOfWeek}
+                        className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          d.isWorkDay
+                            ? isFlexDay
+                              ? 'bg-slate-900 border-emerald-900/40 shadow-sm'
+                              : 'bg-slate-900 border-slate-750 shadow-sm'
+                            : 'bg-slate-900/40 border-slate-800/60 opacity-60'
+                        }`}
+                      >
+                        {/* Nombre, Checkbox del día y Selector Fijo/Flexible en Mixto */}
+                        <div className="flex items-center gap-2.5 min-w-[130px] flex-wrap">
+                          <input
+                            type="checkbox"
+                            id={`create-day-${d.dayOfWeek}`}
+                            checked={d.isWorkDay}
+                            onChange={(e) => handleDayChange(idx, 'isWorkDay', e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <label
+                            htmlFor={`create-day-${d.dayOfWeek}`}
+                            className={`text-sm font-semibold cursor-pointer ${
+                              d.isWorkDay ? 'text-white' : 'text-slate-400'
+                            }`}
+                          >
+                            {DAY_NAMES[d.dayOfWeek]}
+                          </label>
+
+                          {/* Mini selector de tipo de día cuando el horario es Mixto */}
+                          {d.isWorkDay && scheduleType === 'MIXED' && (
+                            <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleDayChange(idx, 'dayType', 'NORMAL')
+                                  if (!d.entryTime) {
+                                    handleDayChange(idx, 'entryTime', '08:00')
+                                    handleDayChange(idx, 'exitTime', '17:00')
+                                  }
+                                }}
+                                className={`px-2 py-0.5 font-semibold rounded-md transition-colors cursor-pointer ${
+                                  (d.dayType || 'NORMAL') === 'NORMAL'
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Fijo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleDayChange(idx, 'dayType', 'FLEXIBLE')
+                                }}
+                                className={`px-2 py-0.5 font-semibold rounded-md transition-colors cursor-pointer ${
+                                  d.dayType === 'FLEXIBLE'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Flexible
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Controles de Horario con soporte para Flexible o Normal */}
+                        {d.isWorkDay ? (
+                          isFlexDay ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2.5 flex-1">
+                              {d.entryTime && d.exitTime ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[11px] text-emerald-400 font-medium">Ventana:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTimePickerTarget({
+                                      modal: 'create',
+                                      dayIndex: idx,
+                                      dayOfWeek: d.dayOfWeek,
+                                      field: 'entryTime',
+                                      currentTime: d.entryTime || '08:00',
+                                    })}
+                                    className="flex items-center gap-1.5 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer text-xs font-mono text-emerald-200"
+                                    title="Hora más temprana de entrada permitida"
+                                  >
+                                    <Sun className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>{formatTimeDisplay(d.entryTime)}</span>
+                                  </button>
+                                  <span className="text-slate-500 text-xs">→</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTimePickerTarget({
+                                      modal: 'create',
+                                      dayIndex: idx,
+                                      dayOfWeek: d.dayOfWeek,
+                                      field: 'exitTime',
+                                      currentTime: d.exitTime || '17:00',
+                                    })}
+                                    className="flex items-center gap-1.5 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer text-xs font-mono text-emerald-200"
+                                    title="Hora límite de salida"
+                                  >
+                                    <Moon className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>{formatTimeDisplay(d.exitTime)}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDayChange(idx, 'entryTime', null)
+                                      handleDayChange(idx, 'exitTime', null)
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                                    title="Quitar ventana de tiempo (dejar libre 24 hrs)"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-medium flex items-center gap-1.5">
+                                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                                    <span>Jornada Flexible • Meta: {workHours} hrs</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDayChange(idx, 'entryTime', '08:00')
+                                      handleDayChange(idx, 'exitTime', '18:00')
+                                    }}
+                                    className="text-[11px] text-slate-400 hover:text-emerald-300 underline underline-offset-2 transition-colors cursor-pointer"
+                                  >
+                                    + Acotar ventana
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col sm:items-end gap-1.5 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Entrada con selector personalizado */}
+                                <button
+                                  type="button"
+                                  onClick={() => setTimePickerTarget({
+                                    modal: 'create',
+                                    dayIndex: idx,
+                                    dayOfWeek: d.dayOfWeek,
+                                    field: 'entryTime',
+                                    currentTime: d.entryTime || '08:00',
+                                  })}
+                                  className="flex items-center gap-1.5 bg-amber-950/25 hover:bg-amber-900/40 border border-amber-500/30 hover:border-amber-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-amber-950/20"
+                                  title="Clic para definir hora de entrada"
+                                >
+                                  <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                  <span className="text-[11px] text-amber-300 font-semibold select-none">Entrada:</span>
+                                  <span className="text-xs font-mono font-bold text-amber-100">{formatTimeDisplay(d.entryTime || '08:00')}</span>
+                                </button>
+
+                                {/* Salida con selector personalizado */}
+                                <button
+                                  type="button"
+                                  onClick={() => setTimePickerTarget({
+                                    modal: 'create',
+                                    dayIndex: idx,
+                                    dayOfWeek: d.dayOfWeek,
+                                    field: 'exitTime',
+                                    currentTime: d.exitTime || '17:00',
+                                  })}
+                                  className="flex items-center gap-1.5 bg-indigo-950/25 hover:bg-indigo-900/40 border border-indigo-500/30 hover:border-indigo-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-indigo-950/20"
+                                  title="Clic para definir hora de salida"
+                                >
+                                  <Moon className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                  <span className="text-[11px] text-indigo-300 font-semibold select-none">Salida:</span>
+                                  <span className="text-xs font-mono font-bold text-indigo-100">{formatTimeDisplay(d.exitTime || '17:00')}</span>
+                                </button>
+                              </div>
+
+                              {/* Cruza medianoche escalonado con diseño interactivo */}
+                              <div className="flex items-center">
+                                <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={d.crossesMidnight}
+                                    onChange={(e) => handleDayChange(idx, 'crossesMidnight', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer flex-shrink-0"
+                                  />
+                                  <span className={`text-[11px] ${d.crossesMidnight ? 'text-amber-300 font-medium' : 'text-slate-400 hover:text-slate-200'}`}>
+                                    Cruza medianoche {d.crossesMidnight ? <span className="text-[10px] text-amber-400/80">(termina al día siguiente)</span> : null}
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-xs text-slate-500 italic py-1 flex items-center">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+                              Día de descanso
+                            </span>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Controles de Horario con apertura directa y colores refinados */}
-                      {d.isWorkDay ? (
-                        <div className="flex flex-col sm:items-end gap-1.5 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Entrada con selector personalizado */}
-                            <button
-                              type="button"
-                              onClick={() => setTimePickerTarget({
-                                modal: 'create',
-                                dayIndex: idx,
-                                dayOfWeek: d.dayOfWeek,
-                                field: 'entryTime',
-                                currentTime: d.entryTime || '08:00',
-                              })}
-                              className="flex items-center gap-1.5 bg-amber-950/25 hover:bg-amber-900/40 border border-amber-500/30 hover:border-amber-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-amber-950/20"
-                              title="Clic para definir hora de entrada"
-                            >
-                              <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                              <span className="text-[11px] text-amber-300 font-semibold select-none">Entrada:</span>
-                              <span className="text-xs font-mono font-bold text-amber-100">{formatTimeDisplay(d.entryTime || '08:00')}</span>
-                            </button>
-
-                            {/* Salida con selector personalizado */}
-                            <button
-                              type="button"
-                              onClick={() => setTimePickerTarget({
-                                modal: 'create',
-                                dayIndex: idx,
-                                dayOfWeek: d.dayOfWeek,
-                                field: 'exitTime',
-                                currentTime: d.exitTime || '17:00',
-                              })}
-                              className="flex items-center gap-1.5 bg-indigo-950/25 hover:bg-indigo-900/40 border border-indigo-500/30 hover:border-indigo-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-indigo-950/20"
-                              title="Clic para definir hora de salida"
-                            >
-                              <Moon className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                              <span className="text-[11px] text-indigo-300 font-semibold select-none">Salida:</span>
-                              <span className="text-xs font-mono font-bold text-indigo-100">{formatTimeDisplay(d.exitTime || '17:00')}</span>
-                            </button>
-                          </div>
-
-                          {/* Cruza medianoche escalonado con diseño interactivo */}
-                          <div className="flex items-center">
-                            <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={d.crossesMidnight}
-                                onChange={(e) => handleDayChange(idx, 'crossesMidnight', e.target.checked)}
-                                className="w-3.5 h-3.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer flex-shrink-0"
-                              />
-                              <span className={`text-[11px] ${d.crossesMidnight ? 'text-amber-300 font-medium' : 'text-slate-400 hover:text-slate-200'}`}>
-                                Cruza medianoche {d.crossesMidnight ? <span className="text-[10px] text-amber-400/80">(termina al día siguiente)</span> : null}
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-500 italic py-1 flex items-center">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
-                            Día de descanso
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </form>
@@ -1210,13 +1701,203 @@ export default function SchedulesPage() {
                 />
               </div>
 
+              {/* Selector de Tipo de Horario: Fijo vs Flexible vs Mixto */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+                  Modalidad del Horario *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Horario Fijo */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeEditScheduleType('NORMAL')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      editScheduleType === 'NORMAL'
+                        ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10 ring-1 ring-amber-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${editScheduleType === 'NORMAL' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${editScheduleType === 'NORMAL' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Fijo
+                        </span>
+                        {editScheduleType === 'NORMAL' && <Check className="w-4 h-4 text-amber-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Entrada y salida con hora estricta. Evalúa puntualidad y retardos.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Horario Flexible */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeEditScheduleType('FLEXIBLE')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      editScheduleType === 'FLEXIBLE'
+                        ? 'bg-emerald-500/10 border-emerald-500/50 shadow-sm shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${editScheduleType === 'FLEXIBLE' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${editScheduleType === 'FLEXIBLE' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Flexible
+                        </span>
+                        {editScheduleType === 'FLEXIBLE' && <Check className="w-4 h-4 text-emerald-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Jornada por meta de horas diarias trabajadas. Sin penalización por retardo.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Horario Mixto */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeEditScheduleType('MIXED')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                      editScheduleType === 'MIXED'
+                        ? 'bg-indigo-500/10 border-indigo-500/50 shadow-sm shadow-indigo-500/10 ring-1 ring-indigo-500/30'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div className={`mt-0.5 p-2 rounded-lg ${editScheduleType === 'MIXED' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400'}`}>
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${editScheduleType === 'MIXED' ? 'text-white' : 'text-slate-300'}`}>
+                          Horario Mixto
+                        </span>
+                        {editScheduleType === 'MIXED' && <Check className="w-4 h-4 text-indigo-400" />}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Combina días fijos y días flexibles en la semana (ej. Lun-Jue fijo, Vie flexible).
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Configuración de Horas Requeridas para Horario Flexible */}
+              {editScheduleType === 'FLEXIBLE' && (
+                <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-emerald-300 mb-1">
+                        Horas Diarias Requeridas *
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        Cantidad mínima de horas que el empleado debe cumplir en cada día laborable
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        step={0.5}
+                        required
+                        value={editWorkHours}
+                        onChange={(e) => setEditWorkHours(Number(e.target.value))}
+                        className="w-24 px-3 py-2 bg-slate-950 border border-emerald-500/40 rounded-xl text-emerald-200 font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      />
+                      <span className="text-xs font-semibold text-emerald-300">horas/día</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400">Atajos rápidos:</span>
+                    {[6, 7, 8, 9, 10].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setEditWorkHours(h)}
+                        className={`px-2 py-0.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                          editWorkHours === h
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {h} hrs ({h * 60} min)
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-emerald-400/90 leading-relaxed">
+                    ✨ <strong>Cálculo inteligente:</strong> El empleado registrará sus checadas (entrada y salida) a cualquier hora. El sistema validará que haya acumulado al menos {editWorkHours} hrs ({Math.round(editWorkHours * 60)} min) trabajadas para marcar la asistencia completa.
+                  </p>
+                </div>
+              )}
+
+              {/* Configuración para Horario Mixto */}
+              {editScheduleType === 'MIXED' && (
+                <div className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/30 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-indigo-300 mb-1">
+                        Meta para Días Flexibles *
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        Horas a cumplir en los días de la semana que configures como flexibles
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        step={0.5}
+                        required
+                        value={editWorkHours}
+                        onChange={(e) => setEditWorkHours(Number(e.target.value))}
+                        className="w-24 px-3 py-2 bg-slate-950 border border-indigo-500/40 rounded-xl text-indigo-200 font-bold text-center text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                      <span className="text-xs font-semibold text-indigo-300">horas/día</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400">Atajos rápidos:</span>
+                    {[6, 7, 8, 9, 10].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setEditWorkHours(h)}
+                        className={`px-2 py-0.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                          editWorkHours === h
+                            ? 'bg-indigo-500 text-white border-indigo-400 font-bold'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {h} hrs ({h * 60} min)
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-indigo-400/90 leading-relaxed">
+                    🔀 <strong>Modalidad Combinada:</strong> En la lista de días abajo puedes elegir para cada día si es <strong>Fijo</strong> (con entrada y salida específica) o <strong>Flexible</strong> (meta de {editWorkHours} hrs).
+                  </p>
+                </div>
+              )}
+
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Configuración de los 7 Días de la Semana
                     </label>
-                    <span className="text-[11px] text-slate-500">Define qué días se trabaja y el horario de entrada/salida</span>
+                    <span className="text-[11px] text-slate-500">
+                      {editScheduleType === 'FLEXIBLE'
+                        ? 'Define qué días aplica la jornada flexible y si deseas acotar una ventana opcional'
+                        : editScheduleType === 'MIXED'
+                        ? 'Configura para cada día si labora en turno Fijo o Flexible'
+                        : 'Define qué días se trabaja y el horario de entrada/salida'}
+                    </span>
                   </div>
 
                   {/* Preajustes rápidos */}
@@ -1250,99 +1931,209 @@ export default function SchedulesPage() {
                 </div>
 
                 <div className="space-y-2 border border-slate-800 rounded-2xl p-3 bg-slate-950">
-                  {editDays.map((d, idx) => (
-                    <div
-                      key={d.dayOfWeek}
-                      className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                        d.isWorkDay
-                          ? 'bg-slate-900 border-slate-750 shadow-sm'
-                          : 'bg-slate-900/40 border-slate-800/60 opacity-60'
-                      }`}
-                    >
-                      {/* Nombre y Checkbox del día */}
-                      <div className="flex items-center gap-2.5 min-w-[110px]">
-                        <input
-                          type="checkbox"
-                          id={`edit-day-${d.dayOfWeek}`}
-                          checked={d.isWorkDay}
-                          onChange={(e) => handleEditDayChange(idx, 'isWorkDay', e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
-                        />
-                        <label
-                          htmlFor={`edit-day-${d.dayOfWeek}`}
-                          className={`text-sm font-semibold cursor-pointer ${
-                            d.isWorkDay ? 'text-white' : 'text-slate-400'
-                          }`}
-                        >
-                          {DAY_NAMES[d.dayOfWeek]}
-                        </label>
+                  {editDays.map((d, idx) => {
+                    const isFlexDay = editScheduleType === 'FLEXIBLE' || (editScheduleType === 'MIXED' && d.dayType === 'FLEXIBLE')
+                    return (
+                      <div
+                        key={d.dayOfWeek}
+                        className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          d.isWorkDay
+                            ? isFlexDay
+                              ? 'bg-slate-900 border-emerald-900/40 shadow-sm'
+                              : 'bg-slate-900 border-slate-750 shadow-sm'
+                            : 'bg-slate-900/40 border-slate-800/60 opacity-60'
+                        }`}
+                      >
+                        {/* Nombre, Checkbox del día y Selector Fijo/Flexible en Mixto */}
+                        <div className="flex items-center gap-2.5 min-w-[130px] flex-wrap">
+                          <input
+                            type="checkbox"
+                            id={`edit-day-${d.dayOfWeek}`}
+                            checked={d.isWorkDay}
+                            onChange={(e) => handleEditDayChange(idx, 'isWorkDay', e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <label
+                            htmlFor={`edit-day-${d.dayOfWeek}`}
+                            className={`text-sm font-semibold cursor-pointer ${
+                              d.isWorkDay ? 'text-white' : 'text-slate-400'
+                            }`}
+                          >
+                            {DAY_NAMES[d.dayOfWeek]}
+                          </label>
+
+                          {/* Mini selector de tipo de día cuando el horario es Mixto */}
+                          {d.isWorkDay && editScheduleType === 'MIXED' && (
+                            <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleEditDayChange(idx, 'dayType', 'NORMAL')
+                                  if (!d.entryTime) {
+                                    handleEditDayChange(idx, 'entryTime', '08:00')
+                                    handleEditDayChange(idx, 'exitTime', '17:00')
+                                  }
+                                }}
+                                className={`px-2 py-0.5 font-semibold rounded-md transition-colors cursor-pointer ${
+                                  (d.dayType || 'NORMAL') === 'NORMAL'
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Fijo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleEditDayChange(idx, 'dayType', 'FLEXIBLE')
+                                }}
+                                className={`px-2 py-0.5 font-semibold rounded-md transition-colors cursor-pointer ${
+                                  d.dayType === 'FLEXIBLE'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Flexible
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Controles de Horario con soporte para Flexible o Normal */}
+                        {d.isWorkDay ? (
+                          isFlexDay ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2.5 flex-1">
+                              {d.entryTime && d.exitTime ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[11px] text-emerald-400 font-medium">Ventana:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTimePickerTarget({
+                                      modal: 'edit',
+                                      dayIndex: idx,
+                                      dayOfWeek: d.dayOfWeek,
+                                      field: 'entryTime',
+                                      currentTime: d.entryTime || '08:00',
+                                    })}
+                                    className="flex items-center gap-1.5 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer text-xs font-mono text-emerald-200"
+                                    title="Hora más temprana de entrada permitida"
+                                  >
+                                    <Sun className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>{formatTimeDisplay(d.entryTime)}</span>
+                                  </button>
+                                  <span className="text-slate-500 text-xs">→</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTimePickerTarget({
+                                      modal: 'edit',
+                                      dayIndex: idx,
+                                      dayOfWeek: d.dayOfWeek,
+                                      field: 'exitTime',
+                                      currentTime: d.exitTime || '17:00',
+                                    })}
+                                    className="flex items-center gap-1.5 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer text-xs font-mono text-emerald-200"
+                                    title="Hora límite de salida"
+                                  >
+                                    <Moon className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>{formatTimeDisplay(d.exitTime)}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleEditDayChange(idx, 'entryTime', null)
+                                      handleEditDayChange(idx, 'exitTime', null)
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                                    title="Quitar ventana de tiempo (dejar libre 24 hrs)"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-medium flex items-center gap-1.5">
+                                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                                    <span>Jornada Flexible • Meta: {editWorkHours} hrs</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleEditDayChange(idx, 'entryTime', '08:00')
+                                      handleEditDayChange(idx, 'exitTime', '18:00')
+                                    }}
+                                    className="text-[11px] text-slate-400 hover:text-emerald-300 underline underline-offset-2 transition-colors cursor-pointer"
+                                  >
+                                    + Acotar ventana
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col sm:items-end gap-1.5 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Entrada con selector personalizado */}
+                                <button
+                                  type="button"
+                                  onClick={() => setTimePickerTarget({
+                                    modal: 'edit',
+                                    dayIndex: idx,
+                                    dayOfWeek: d.dayOfWeek,
+                                    field: 'entryTime',
+                                    currentTime: d.entryTime || '08:00',
+                                  })}
+                                  className="flex items-center gap-1.5 bg-amber-950/25 hover:bg-amber-900/40 border border-amber-500/30 hover:border-amber-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-amber-950/20"
+                                  title="Clic para definir hora de entrada"
+                                >
+                                  <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                  <span className="text-[11px] text-amber-300 font-semibold select-none">Entrada:</span>
+                                  <span className="text-xs font-mono font-bold text-amber-100">{formatTimeDisplay(d.entryTime || '08:00')}</span>
+                                </button>
+
+                                {/* Salida con selector personalizado */}
+                                <button
+                                  type="button"
+                                  onClick={() => setTimePickerTarget({
+                                    modal: 'edit',
+                                    dayIndex: idx,
+                                    dayOfWeek: d.dayOfWeek,
+                                    field: 'exitTime',
+                                    currentTime: d.exitTime || '17:00',
+                                  })}
+                                  className="flex items-center gap-1.5 bg-indigo-950/25 hover:bg-indigo-900/40 border border-indigo-500/30 hover:border-indigo-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-indigo-950/20"
+                                  title="Clic para definir hora de salida"
+                                >
+                                  <Moon className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                  <span className="text-[11px] text-indigo-300 font-semibold select-none">Salida:</span>
+                                  <span className="text-xs font-mono font-bold text-indigo-100">{formatTimeDisplay(d.exitTime || '17:00')}</span>
+                                </button>
+                              </div>
+
+                              {/* Cruza medianoche escalonado con diseño interactivo */}
+                              <div className="flex items-center">
+                                <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={d.crossesMidnight}
+                                    onChange={(e) => handleEditDayChange(idx, 'crossesMidnight', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer flex-shrink-0"
+                                  />
+                                  <span className={`text-[11px] ${d.crossesMidnight ? 'text-amber-300 font-medium' : 'text-slate-400 hover:text-slate-200'}`}>
+                                    Cruza medianoche {d.crossesMidnight ? <span className="text-[10px] text-amber-400/80">(termina al día siguiente)</span> : null}
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-xs text-slate-500 italic py-1 flex items-center">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+                              Día de descanso
+                            </span>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Controles de Horario con apertura directa y colores refinados */}
-                      {d.isWorkDay ? (
-                        <div className="flex flex-col sm:items-end gap-1.5 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Entrada con selector personalizado */}
-                            <button
-                              type="button"
-                              onClick={() => setTimePickerTarget({
-                                modal: 'edit',
-                                dayIndex: idx,
-                                dayOfWeek: d.dayOfWeek,
-                                field: 'entryTime',
-                                currentTime: d.entryTime || '08:00',
-                              })}
-                              className="flex items-center gap-1.5 bg-amber-950/25 hover:bg-amber-900/40 border border-amber-500/30 hover:border-amber-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-amber-950/20"
-                              title="Clic para definir hora de entrada"
-                            >
-                              <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                              <span className="text-[11px] text-amber-300 font-semibold select-none">Entrada:</span>
-                              <span className="text-xs font-mono font-bold text-amber-100">{formatTimeDisplay(d.entryTime || '08:00')}</span>
-                            </button>
-
-                            {/* Salida con selector personalizado */}
-                            <button
-                              type="button"
-                              onClick={() => setTimePickerTarget({
-                                modal: 'edit',
-                                dayIndex: idx,
-                                dayOfWeek: d.dayOfWeek,
-                                field: 'exitTime',
-                                currentTime: d.exitTime || '17:00',
-                              })}
-                              className="flex items-center gap-1.5 bg-indigo-950/25 hover:bg-indigo-900/40 border border-indigo-500/30 hover:border-indigo-400 active:scale-95 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer group shadow-sm shadow-indigo-950/20"
-                              title="Clic para definir hora de salida"
-                            >
-                              <Moon className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                              <span className="text-[11px] text-indigo-300 font-semibold select-none">Salida:</span>
-                              <span className="text-xs font-mono font-bold text-indigo-100">{formatTimeDisplay(d.exitTime || '17:00')}</span>
-                            </button>
-                          </div>
-
-                          {/* Cruza medianoche escalonado con diseño interactivo */}
-                          <div className="flex items-center">
-                            <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={d.crossesMidnight}
-                                onChange={(e) => handleEditDayChange(idx, 'crossesMidnight', e.target.checked)}
-                                className="w-3.5 h-3.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer flex-shrink-0"
-                              />
-                              <span className={`text-[11px] ${d.crossesMidnight ? 'text-amber-300 font-medium' : 'text-slate-400 hover:text-slate-200'}`}>
-                                Cruza medianoche {d.crossesMidnight ? <span className="text-[10px] text-amber-400/80">(termina al día siguiente)</span> : null}
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-500 italic py-1 flex items-center">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
-                            Día de descanso
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </form>

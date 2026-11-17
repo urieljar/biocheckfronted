@@ -6,6 +6,7 @@ export interface CustomDatePickerProps {
   value: string // Formato YYYY-MM-DD o cadena vacía ""
   onChange: (value: string) => void
   label?: string // Etiqueta superior exterior (para formularios estándar)
+  labelClassName?: string
   innerLabel?: string // Etiqueta interna superior compacta (estilo toolbar: DESDE / HASTA)
   placeholder?: string
   required?: boolean
@@ -63,6 +64,7 @@ export default function CustomDatePicker({
   value,
   onChange,
   label,
+  labelClassName,
   innerLabel,
   placeholder = 'dd/mm/aaaa',
   required = false,
@@ -329,11 +331,16 @@ export default function CustomDatePicker({
     <div ref={containerRef} className={`w-full ${className}`}>
       {/* Etiqueta superior estándar si fue provista */}
       {label && (
-        <label className={`block font-semibold mb-1 ${
-          isSm
-            ? 'text-xs text-slate-400'
-            : 'text-xs uppercase tracking-wider text-slate-300 mb-1.5'
-        }`}>
+        <label
+          className={
+            labelClassName ||
+            `block font-semibold mb-1 ${
+              isSm
+                ? 'text-xs text-slate-400'
+                : 'text-xs uppercase tracking-wider text-slate-300 mb-1.5'
+            }`
+          }
+        >
           {label}
         </label>
       )}
@@ -345,7 +352,7 @@ export default function CustomDatePicker({
         className={`w-full flex items-center gap-2 bg-slate-950 border border-slate-700/80 rounded-xl transition-all cursor-pointer select-none ${
           isSm
             ? 'h-9 px-2 text-xs'
-            : 'min-h-[46px] px-3 py-2 text-xs sm:text-sm'
+            : 'h-[46px] min-h-[46px] px-3 py-2 text-xs sm:text-sm'
         } ${
           disabled ? 'opacity-50 cursor-not-allowed bg-slate-900/50' : 'hover:border-slate-600'
         } ${isOpen ? 'ring-2 border-slate-600 ' + colors.focus : ''}`}
@@ -394,6 +401,8 @@ export default function CustomDatePicker({
           required={required}
           readOnly
           tabIndex={-1}
+          autoComplete="off"
+          data-form-type="other"
           className="sr-only"
         />
 

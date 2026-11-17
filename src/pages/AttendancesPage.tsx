@@ -26,7 +26,9 @@ interface EventResponse {
 interface Filters { from: string; to: string; search: string; departmentId: string; positionId: string; deviceId: string }
 const emptyFilters: Filters = { from: '', to: '', search: '', departmentId: '', positionId: '', deviceId: '' }
 const queryFor = (filters: Filters) => new URLSearchParams(Object.entries(filters).filter(([, value]) => value.trim()).map(([key, value]) => [key, value.trim()]))
-const inputClass = 'w-full min-w-0 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const labelClass = 'block text-xs font-semibold text-slate-300 mb-1.5 truncate'
+const inputClass = 'h-[46px] w-full min-w-0 rounded-xl border border-slate-700/80 bg-slate-950 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const selectClass = `${inputClass} cursor-pointer`
 const buttonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed'
 
 export default function AttendancesPage() {
@@ -138,20 +140,66 @@ export default function AttendancesPage() {
       {error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
       {notice && <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">{notice}</div>}
       {catalogError && <div role="alert" className="text-sm text-amber-300">{catalogError}</div>}
-      <form onSubmit={applyFilters} className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:grid-cols-2 xl:grid-cols-3">
-        <CustomDatePicker innerLabel="Desde" value={draft.from} onChange={(from) => setDraft((value) => ({ ...value, from }))} accentColor="indigo" className="w-full min-w-0" />
-        <CustomDatePicker innerLabel="Hasta" value={draft.to} onChange={(to) => setDraft((value) => ({ ...value, to }))} accentColor="indigo" className="w-full min-w-0" />
-        <label className="min-w-0 text-xs text-slate-400">Empleado: nombre, apellido o número
-          <input aria-label="Buscar empleado" className={`${inputClass} mt-1`} value={draft.search} maxLength={255} onChange={(event) => setDraft({ ...draft, search: event.target.value })} placeholder="Buscar empleado…" />
-        </label>
+      <form onSubmit={applyFilters} role="search" autoComplete="off" data-form-type="other" className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="flex flex-col min-w-0">
+          <CustomDatePicker
+            label="Desde"
+            labelClassName={labelClass}
+            value={draft.from}
+            onChange={(from) => setDraft((value) => ({ ...value, from }))}
+            accentColor="indigo"
+            className="w-full min-w-0"
+          />
+        </div>
+        <div className="flex flex-col min-w-0">
+          <CustomDatePicker
+            label="Hasta"
+            labelClassName={labelClass}
+            value={draft.to}
+            onChange={(to) => setDraft((value) => ({ ...value, to }))}
+            accentColor="indigo"
+            className="w-full min-w-0"
+          />
+        </div>
+        <div className="flex flex-col min-w-0">
+          <label htmlFor="search-employee-events" className={labelClass}>
+            Empleado: nombre, apellido o ID
+          </label>
+          <input
+            id="search-employee-events"
+            type="search"
+            name="q"
+            autoComplete="off"
+            spellCheck={false}
+            data-form-type="other"
+            aria-label="Buscar empleado"
+            className={inputClass}
+            value={draft.search}
+            maxLength={255}
+            onChange={(event) => setDraft({ ...draft, search: event.target.value })}
+            placeholder="Buscar empleado…"
+          />
+        </div>
         {(['departments', 'positions', 'devices'] as const).map((catalog) => {
           const field = { departments: 'departmentId', positions: 'positionId', devices: 'deviceId' }[catalog] as keyof Filters
           const label = { departments: 'Departamento', positions: 'Cargo', devices: 'Dispositivo' }[catalog]
-          return <label key={catalog} className="min-w-0 text-xs text-slate-400">{label}
-            <select className={`${inputClass} mt-1`} value={draft[field]} onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}>
-              <option value="">Todos</option>{catalogs[catalog].map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
+          const id = `filter-${field}`
+          return (
+            <div key={catalog} className="flex flex-col min-w-0">
+              <label htmlFor={id} className={labelClass}>{label}</label>
+              <select
+                id={id}
+                className={selectClass}
+                value={draft[field]}
+                onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+              >
+                <option value="">Todos</option>
+                {catalogs[catalog].map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </div>
+          )
         })}
         <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-3">
           <button type="submit" disabled={loading || exporting} className={`${buttonClass} bg-indigo-600`}><Search className="h-4 w-4" />Consultar</button>
