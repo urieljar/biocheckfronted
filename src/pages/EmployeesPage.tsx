@@ -63,6 +63,17 @@ interface EmployeesResponse {
   }
 }
 
+interface CreateEmployeeResponse {
+  ok: boolean
+  message?: string
+  data: Employee
+  sync?: {
+    transport?: 'ADMS' | 'TCP' | null
+    status?: 'PENDING' | 'SENT' | 'SYNCED' | 'ERROR'
+    error?: string | null
+  } | null
+}
+
 interface ClockPresenceResult {
   device: { id: string; name: string }
   checkedAt: string
@@ -102,6 +113,7 @@ export default function EmployeesPage() {
   const [profileError, setProfileError] = useState('')
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [createError, setCreateError] = useState('')
   const [syncingAllPending, setSyncingAllPending] = useState(false)
   const [verifyingClock, setVerifyingClock] = useState(false)
   const [clockPresence, setClockPresence] = useState<ClockPresenceResult | null>(null)
@@ -211,6 +223,20 @@ export default function EmployeesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, presenceFilter, clockPresence, laborFilter])
 
+  // ADMS confirma la sincronización de forma asíncrona. Mientras haya
+  // empleados pendientes, refrescar la lista para reflejar el acuse del reloj
+  // sin obligar al usuario a recargar manualmente la página.
+  useEffect(() => {
+    if (!employees.some((employee) => employee.deviceSyncStatus === 'PENDING')) return
+    const timer = window.setInterval(() => {
+      loadEmployees(page, search, presenceFilter, clockPresence, laborFilter)
+    }, 10000)
+    return () => window.clearInterval(timer)
+    // loadEmployees cambia de identidad en cada render; se controla el ciclo
+    // con los valores que realmente determinan la consulta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, page, search, presenceFilter, clockPresence, laborFilter])
+
   const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault()
     setPage(1)
@@ -237,6 +263,7 @@ export default function EmployeesPage() {
       cardNumber: '',
       deviceUid: '',
     })
+    setCreateError('')
     setIsCreateOpen(true)
   }
 
@@ -287,6 +314,16 @@ export default function EmployeesPage() {
 
   const handleCreateEmployee = async (e: FormEvent) => {
     e.preventDefault()
+    setCreateError('')
+
+    const deviceUserId = formData.deviceUserId.trim()
+    const name = formData.name.trim()
+    const existingEmployee = employees.find((employee) => employee.deviceUserId === deviceUserId)
+    if (existingEmployee) {
+      setCreateError(`El ID ${deviceUserId} ya está registrado para “${existingEmployee.name}”. Para cambiar sus datos, cierra esta ventana y edita ese empleado.`)
+      return
+    }
+
     setClockPresence(null)
     setPresenceFilter('all')
     setPage(1)
@@ -294,25 +331,40 @@ export default function EmployeesPage() {
     setFeedback(null)
     try {
       const payload = {
-        deviceUserId: formData.deviceUserId.trim(),
-        name: formData.name.trim(),
+        deviceUserId,
+        name,
         deviceRole: Number(formData.deviceRole),
         ...(canReadPin ? { devicePin: formData.devicePin.trim() || null } : {}),
         cardNumber: formData.cardNumber.trim() || null,
         deviceUid: formData.deviceUid ? Number(formData.deviceUid) : null,
       }
 
-      await api.post('/employees', payload)
+      const response = await api.post<CreateEmployeeResponse>('/employees', payload)
+      const sync = response.sync
+      const syncMessage = sync?.status === 'SYNCED'
+        ? ' Sincronización confirmada con el checador.'
+        : sync?.status === 'ERROR'
+          ? ` El empleado se guardó localmente, pero la sincronización falló.${sync.error ? ` Detalle: ${sync.error}` : ''}`
+          : sync?.status === 'SENT'
+            ? ' Enviado al sistema de sincronización; queda pendiente la confirmación del checador.'
+            : ' Guardado localmente; queda pendiente la sincronización con el checador.'
       setFeedback({
-        type: 'success',
-        message: `Empleado "${payload.name}" guardado en la base de datos (pendiente de sincronizar).`,
+        type: sync?.status === 'ERROR' ? 'error' : 'success',
+        message: `Empleado "${payload.name}" guardado en la base de datos.${syncMessage}`,
       })
       setIsCreateOpen(false)
       loadEmployees(1, '', 'all', null)
     } catch (err) {
+      const status = err instanceof Error ? (err as Error & { status?: number }).status : undefined
+      const message = err instanceof Error ? err.message : 'No fue posible crear el empleado'
+      setCreateError(status === 409 || message.toLocaleLowerCase().includes('deviceuserid')
+        ? `El ID ${deviceUserId} ya está registrado en el checador. Usa otro ID o edita el empleado existente; no se creó un registro duplicado.`
+        : message)
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'No fue posible crear el empleado',
+        message: status === 409 || message.toLocaleLowerCase().includes('deviceuserid')
+          ? 'No se creó el empleado porque el ID del reloj ya existe.'
+          : message,
       })
     } finally {
       setActionLoading(null)
@@ -336,10 +388,20 @@ export default function EmployeesPage() {
         deviceUid: formData.deviceUid ? Number(formData.deviceUid) : null,
       }
 
-      await api.patch(`/employees/${selectedEmployee.id}/device-settings`, payload)
+      const response = await api.patch<CreateEmployeeResponse>(`/employees/${selectedEmployee.id}/device-settings`, payload)
+      const sync = response.sync
+      const syncMessage = sync?.status === 'SYNCED'
+        ? ' Sincronización confirmada con el checador.'
+        : sync?.status === 'ERROR'
+          ? ` La actualización se guardó localmente, pero la sincronización falló.${sync.error ? ` Detalle: ${sync.error}` : ''}`
+          : sync?.status === 'SENT'
+            ? ' Actualización enviada; queda pendiente la confirmación del checador.'
+            : sync?.status === 'PENDING'
+              ? ' Actualización guardada; queda pendiente la sincronización con el checador.'
+              : ''
       setFeedback({
-        type: 'success',
-        message: `Ajustes del empleado actualizados en la base de datos.`,
+        type: sync?.status === 'ERROR' ? 'error' : 'success',
+        message: `Ajustes del empleado actualizados en la base de datos.${syncMessage}`,
       })
       setIsEditOpen(false)
       loadEmployees(1, search, 'all', null)
@@ -365,17 +427,17 @@ export default function EmployeesPage() {
         Object.keys(EMPTY_PROFILE).map((key) => [key, profileForm[key as keyof typeof EMPTY_PROFILE].trim() || null])
       )
 
-      if (hasExistingProfile) {
-        await api.patch(`/employees/${selectedEmployee.id}/profile`, payload)
-      } else {
-        await api.post(`/employees/${selectedEmployee.id}/profile`, payload)
-      }
+      type SaveProfileResponse = { message: string; sync?: { status: string; error?: string | null } | null }
+      const response = hasExistingProfile
+        ? await api.patch<SaveProfileResponse>(`/employees/${selectedEmployee.id}/profile`, payload)
+        : await api.post<SaveProfileResponse>(`/employees/${selectedEmployee.id}/profile`, payload)
 
       setFeedback({
-        type: 'success',
-        message: `Expediente de ${selectedEmployee.name} actualizado exitosamente`,
+        type: response.sync?.status === 'ERROR' ? 'error' : 'success',
+        message: response.message + (response.sync?.status === 'ERROR' && response.sync.error ? ' Detalle: ' + response.sync.error : ''),
       })
       setIsProfileOpen(false)
+      loadEmployees(1, search, 'all', null)
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -735,6 +797,7 @@ export default function EmployeesPage() {
                           <option value="">Más acciones</option>
                           {!emp.deletedAt && <option value="history">Historial laboral</option>}
                           {canChangeStatus && !emp.deletedAt && emp.profile?.employmentStatus !== 'TERMINATED' && <option value="terminate">Dar de baja</option>}
+                          {canChangeStatus && !emp.deletedAt && <option value="remove-device">Retirar del checador</option>}
                           {canChangeStatus && !emp.deletedAt && emp.profile?.employmentStatus === 'TERMINATED' && <option value="rehire">Reingreso</option>}
                           {canDelete && !emp.deletedAt && <option value="archive">Eliminar registro</option>}
                           {canDelete && emp.deletedAt && <option value="restore">Recuperar registro</option>}
@@ -813,17 +876,29 @@ export default function EmployeesPage() {
                   type="text"
                   required
                   value={formData.deviceUserId}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setCreateError('')
                     setFormData({ ...formData, deviceUserId: e.target.value })
-                  }
+                  }}
                   placeholder="Ej: 101"
                   className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Debe ser único en el checador. Si ya existe, edita el empleado en lugar de crear otro.
+                </p>
+                {createError && (
+                  <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200" role="alert">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{createError}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
-                  Nombre Completo *
+                  Nombre en el checador *
                 </label>
                 <input
                   type="text"
@@ -946,12 +1021,12 @@ export default function EmployeesPage() {
             <form onSubmit={handleEditEmployee} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
-                  Nombre Completo *
+                  Nombre en el checador *
                 </label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
+                  required
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />

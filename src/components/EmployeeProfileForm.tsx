@@ -42,10 +42,10 @@ export default function EmployeeProfileForm({ employee, value, onChange, onSubmi
       .finally(() => { if (!cancelled) setScheduleLoading(false) })
     return () => { cancelled = true }
   }, [employee.id])
-  const field = (key: keyof typeof EMPTY_EMPLOYEE_PROFILE, label: string, type = 'text') => (
+  const field = (key: keyof typeof EMPTY_EMPLOYEE_PROFILE, label: string, type = 'text', readOnly = false) => (
     <label key={key} className="block min-w-0 text-sm text-slate-300">
       <span className="mb-1.5 block">{label}</span>
-      <input type={type} maxLength={255} value={value[key]} onChange={(event) => onChange({ ...value, [key]: event.target.value })} className={inputClass} />
+      <input type={type} maxLength={255} value={value[key]} readOnly={readOnly} onChange={(event) => onChange({ ...value, [key]: event.target.value })} className={`${inputClass}${readOnly ? ' cursor-not-allowed text-slate-400 bg-slate-900' : ''}`} />
     </label>
   )
   const catalog = (key: 'departmentId' | 'positionId' | 'areaId', label: string, options: Option[]) => (
@@ -95,7 +95,7 @@ export default function EmployeeProfileForm({ employee, value, onChange, onSubmi
               <section role="tabpanel" id="profile-panel-0" aria-labelledby="profile-tab-0" data-panel="0" hidden={tab !== 0}>
                 <h4 className="font-semibold text-emerald-300 mb-4">Perfil y organización</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {field('firstName', 'Nombre(s)')}{field('lastName', 'Apellidos')}{field('employeeNumber', 'Número de empleado')}
+                  {field('firstName', 'Nombre(s)', 'text', true)}{field('lastName', 'Apellidos')}{field('employeeNumber', 'Número de empleado')}
                   {catalog('departmentId', 'Departamento', departments)}{catalog('positionId', 'Puesto', positions)}{catalog('areaId', 'Área', areas)}
                 </div>
               </section>
